@@ -68,8 +68,9 @@ func (tm2pb) ValidatorUpdate(val *Validator) abci.ValidatorUpdate {
 		panic(err)
 	}
 	return abci.ValidatorUpdate{
-		PubKey: pk,
-		Power:  val.VotingPower,
+		PubKey:     pk,
+		Power:      val.VotingPower,
+		NextPubKey: pk,
 	}
 }
 
@@ -89,8 +90,9 @@ func (tm2pb) NewValidatorUpdate(pubkey crypto.PubKey, power int64) abci.Validato
 		panic(err)
 	}
 	return abci.ValidatorUpdate{
-		PubKey: pubkeyABCI,
-		Power:  power,
+		PubKey:     pubkeyABCI,
+		Power:      power,
+		NextPubKey: pubkeyABCI,
 	}
 }
 
@@ -102,17 +104,27 @@ var PB2TM = pb2tm{}
 
 type pb2tm struct{}
 
-func (pb2tm) ValidatorUpdates(vals []abci.ValidatorUpdate) ([]*Validator, error) {
+func (pb2tm) ValidatorUpdates(vals []abci.ValidatorUpdate) ([]*Validator, map[string]crypto.PubKey, error) {
 	tmVals := make([]*Validator, len(vals))
+	pubKeyUpdates := make(map[string]crypto.PubKey, len(vals))
 	for i, v := range vals {
 		pub, err := cryptoenc.PubKeyFromProto(v.PubKey)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		updated := NewValidator(pub, v.Power)
 		updated.SetBlsKey(v.BlsKey)
 		updated.SetRelayerAddress(v.RelayerAddress)
+
+		nextPub, err := cryptoenc.PubKeyFromProto(v.NextPubKey)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !pub.Equals(nextPub) {
+			pubKeyUpdates[pub.Address().String()] = nextPub
+		}
+
 		tmVals[i] = updated
 	}
-	return tmVals, nil
+	return tmVals, pubKeyUpdates, nil
 }
